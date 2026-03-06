@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Rush - Edición Web</title>
+    <style>
+        :root {
+            --bg-dark: #0a0a0f;
+            --grid-line: #28282d;
+            --border-color: #3c3c46;
+            --text-white: #ffffff;
+            --neon-blue: #00f3ff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-white);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 15px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            max-width: 95vw;
+        }
+
+        @media (max-width: 800px) {
+            #game-container {
+                flex-direction: column;
+                align-items: center;
+                gap: 5px;
+                padding: 10px;
+            }
+            canvas#main-canvas {
+                max-width: 80vw;
+                height: auto;
+            }
+            #sidebar {
+                flex-direction: row;
+                justify-content: center;
+                gap: 10px;
+                width: 100%;
+            }
+            .stat-box { margin-bottom: 0 !important; flex: 1; }
+        }
+
+        canvas {
+            border: 4px solid var(--border-color);
+            background-color: #141419;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        #sidebar {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            min-width: 120px;
+        }
+
+        .stat-box {
+            margin-bottom: 15px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(0,0,0,0.3);
+            text-align: center;
+            border-radius: 8px;
+        }
+
+        .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; color: var(--text-white); }
+
+        #next-canvas {
+            width: 80px;
+            height: 80px;
+            background: transparent;
+            border: none;
+            margin: 0 auto;
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 15, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            background: transparent;
+            color: var(--neon-blue);
+            border: 2px solid var(--neon-blue);
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-top: 15px;
+            border-radius: 50px;
+        }
+
+        #mobile-controls {
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 15px;
+            padding: 10px;
+        }
+
+        @media (max-width: 800px) {
+            #mobile-controls { display: grid; }
+        }
+
+        .m-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #555;
+            border-radius: 20px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .m-btn:active {
+            background: rgba(0, 243, 255, 0.4);
+            border-color: var(--neon-blue);
+            transform: scale(0.9);
+        }
+
+        #gesture-hint {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>BLOCK RUSH</h1>
+
+    <div id="game-container">
+        <canvas id="main-canvas"></canvas>
+
+        <div id="sidebar">
+            <div class="stat-box">
+                <div class="stat-label">Siguiente</div>
+                <canvas id="next-canvas"></canvas>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Puntos</div>
+                <div id="score-val" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Récord</div>
+                <div id="best-val" class="stat-value">0</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h2 id="status-text">LISTO PARA JUGAR</h2>
+        <button class="btn" id="start-btn">EMPEZAR</button>
+    </div>
+
+    <div id="mobile-controls">
+        <div class="m-btn" id="m-left">←</div>
+        <div class="m-btn" id="m-rotate">↻</div>
+        <div class="m-btn" id="m-right">→</div>
+    </div>
+
+    <div id="gesture-hint">
+        Toca el tablero para rotar | Desliza abajo para caer rápido
+    </div>
+
+    <script>
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 30;
+
+        const mainCanvas = document.getElementById('main-canvas');
+        const nextCanvas = document.getElementById('next-canvas');
+        const ctx = mainCanvas.getContext('2d');
+        const nextCtx = nextCanvas.getContext('2d');
+
+        mainCanvas.width = COLS * BLOCK_SIZE;
+        mainCanvas.height = ROWS * BLOCK_SIZE;
+        nextCanvas.width = 4 * 20;
+        nextCanvas.height = 4 * 20;
+
+        const COLORES = ['#39FF14', '#FF007F', '#00FFFF', '#FFFFFF', '#FFAA00', '#AA00FF', '#0064FF'];
+        const SHAPES = [
+            [[0, 1, 1, 0], [1, 1, 0, 0]], // S
+            [[1, 1, 0, 0], [0, 1, 1, 0]], // Z
+            [[1, 1, 1, 1]],               // I
+            [[1, 1], [1, 1]],             // O
+            [[1, 0, 0], [1, 1, 1]],       // J
+            [[0, 0, 1], [1, 1, 1]],       // L
+            [[0, 1, 0], [1, 1, 1]]        // T
+        ];
+
+        class Piece {
+            constructor(shape, color) {
+                this.shape = shape;
+                this.color = color;
+                this.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
+                this.y = 0;
+            }
+            rotate() {
+                return this.shape[0].map((_, i) => this.shape.map(row => row[i]).reverse());
+            }
+        }
+
+        let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        let score = 0;
+        let highScore = localStorage.getItem('blockRushBest') || 0;
+        let activePiece = null;
+        let nextPiece = null;
+        let gameActive = false;
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+
+        document.getElementById('best-val').textContent = highScore;
+
+        function createPiece() {
+            const idx = Math.floor(Math.random() * SHAPES.length);
+            return new Piece(SHAPES[idx], COLORES[idx]);
+        }
+
+        function drawBlock(x, y, color, targetCtx = ctx, size = BLOCK_SIZE) {
+            targetCtx.fillStyle = color;
+            targetCtx.fillRect(x * size, y * size, size, size);
+            targetCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+            targetCtx.strokeRect(x * size, y * size, size, size);
+            targetCtx.shadowBlur = 10;
+            targetCtx.shadowColor = color;
+        }
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+            ctx.strokeStyle = '#28282d';
+            ctx.shadowBlur = 0;
+            for(let i=0; i<=COLS; i++) {
+                ctx.beginPath(); ctx.moveTo(i*BLOCK_SIZE, 0); ctx.lineTo(i*BLOCK_SIZE, mainCanvas.height); ctx.stroke();
+            }
+            for(let i=0; i<=ROWS; i++) {
+                ctx.beginPath(); ctx.moveTo(0, i*BLOCK_SIZE); ctx.lineTo(mainCanvas.width, i*BLOCK_SIZE); ctx.stroke();
+            }
+            grid.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) drawBlock(x, y, value);
+                });
+            });
+            if (activePiece) {
+                activePiece.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value) drawBlock(activePiece.x + x, activePiece.y + y, activePiece.color);
+                    });
+                });
+            }
+        }
+
+        function drawNext() {
+            nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+            if (nextPiece) {
+                nextPiece.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value) drawBlock(x, y, nextPiece.color, nextCtx, 20);
+                    });
+                });
+            }
+        }
+
+        function collide(p, offsetX = 0, offsetY = 0, newShape = null) {
+            const shape = newShape || p.shape;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        const newX = p.x + x + offsetX;
+                        const newY = p.y + y + offsetY;
+                        if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && grid[newY][newX])) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge() {
+            activePiece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        if (activePiece.y + y < 0) return gameOver();
+                        grid[activePiece.y + y][activePiece.x + x] = activePiece.color;
+                    }
+                });
+            });
+        }
+
+        function clearRows() {
+            let rowsCleared = 0;
+            for (let y = ROWS - 1; y >= 0; y--) {
+                if (grid[y].every(cell => cell !== 0)) {
+                    grid.splice(y, 1);
+                    grid.unshift(Array(COLS).fill(0));
+                    rowsCleared++;
+                    y++; 
+                }
+            }
+            if (rowsCleared > 0) {
+                score += rowsCleared * 100;
+                document.getElementById('score-val').textContent = score;
+                dropInterval = Math.max(100, 1000 - (score / 10));
+            }
+        }
+
+        function drop() {
+            if (!activePiece || !gameActive) return;
+            if (!collide(activePiece, 0, 1)) {
+                activePiece.y++;
+            } else {
+                merge();
+                clearRows();
+                resetPiece();
+            }
+            dropCounter = 0;
+        }
+
+        function rotateAction() {
+            if (!activePiece || !gameActive) return;
+            const rs = activePiece.rotate();
+            if (!collide(activePiece, 0, 0, rs)) activePiece.shape = rs;
+        }
+
+        function resetPiece() {
+            activePiece = nextPiece || createPiece();
+            nextPiece = createPiece();
+            drawNext();
+            if (collide(activePiece)) gameOver();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('status-text').textContent = "¡FIN DEL JUEGO!";
+            document.getElementById('overlay').style.display = 'flex';
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('blockRushBest', highScore);
+                document.getElementById('best-val').textContent = highScore;
+            }
+        }
+
+        function update(time = 0) {
+            if (!gameActive) return;
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) drop();
+            drawGrid();
+            requestAnimationFrame(update);
+        }
+
+        // --- GESTOS TÁCTILES ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartTime = 0;
+
+        mainCanvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+            e.preventDefault();
+        }, { passive: false });
+
+        mainCanvas.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            const dt = Date.now() - touchStartTime;
+
+            // Toque rápido -> Rotar
+            if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && dt < 250) {
+                rotateAction();
+            } 
+            // Deslizar abajo -> Caída rápida
+            else if (dy > 40 && Math.abs(dx) < 40) {
+                drop();
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        // Botones de control
+        const bindBtn = (id, fn) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
+            el.addEventListener('mousedown', (e) => { e.preventDefault(); fn(); });
+        };
+
+        bindBtn('m-left', () => { if (!collide(activePiece, -1, 0)) activePiece.x--; });
+        bindBtn('m-right', () => { if (!collide(activePiece, 1, 0)) activePiece.x++; });
+        bindBtn('m-rotate', rotateAction);
+
+        // Teclado
+        window.addEventListener('keydown', e => {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft' && !collide(activePiece, -1, 0)) activePiece.x--;
+            if (e.key === 'ArrowRight' && !collide(activePiece, 1, 0)) activePiece.x++;
+            if (e.key === 'ArrowDown') drop();
+            if (e.key === 'ArrowUp') rotateAction();
+        });
+
+        const startBtn = document.getElementById('start-btn');
+        const startFn = (e) => {
+            e.preventDefault();
+            grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            score = 0;
+            document.getElementById('score-val').textContent = score;
+            document.getElementById('overlay').style.display = 'none';
+            gameActive = true;
+            resetPiece();
+            update();
+        };
+        startBtn.addEventListener('click', startFn);
+        startBtn.addEventListener('touchstart', startFn, { passive: false });
+
+        drawGrid();
+    </script>
+</body>
+</html>
